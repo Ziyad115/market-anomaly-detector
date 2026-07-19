@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import requests
+import xml.etree.ElementTree as ET
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import urllib.parse
@@ -19,6 +20,7 @@ st.markdown("""
     border-radius: 10px;
     padding: 16px 20px;
     margin-bottom: 6px;
+    cursor: pointer;
 }
 .anomaly-header {
     display: flex;
@@ -47,24 +49,11 @@ st.markdown("""
     padding: 10px 14px;
     margin-top: 10px;
 }
-.search-btn {
-    display: inline-block;
-    background-color: #2E86AB;
-    color: white !important;
-    padding: 8px 16px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: 8px;
-}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("📊 Market Anomaly & Crisis Detector")
 st.caption("Live statistical monitoring of market stress using rolling z-scores across major asset classes")
-
-NEWSDATA_API_KEY = st.secrets.get("NEWSDATA_API_KEY", "")
 
 HISTORICAL_EVENTS = {
     "2008-09-15": "Lehman Brothers files for bankruptcy, triggering global financial crisis.",
@@ -114,16 +103,18 @@ def compute_anomaly(prices, window=63):
     df['Flagged'] = df['Anomaly_Score'] > df['Threshold']
     return df
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def get_latest_news(api_key):
-    if not api_key:
-        return []
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_news_for_date(date_str, days_window=1):
     try:
-        url = "https://newsdata.io/api/1/latest"
-        params = {"apikey": api_key, "q": "stock market", "language": "en"}
-        resp = requests.get(url, params=params, timeout=10)
-        data = resp.json()
-        return data.get("results", [])[:5]
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        after = d.strftime("%Y-%m-%d")
+        before = (d + timedelta(days=days_window)).strftime("%Y-%m-%d")
+        query = f"stock market after:{after} before:{before}"
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")[:5]
+        return [{"title": i.find("title").text, "link": i.find("link").text, "pubDate": i.find("pubDate").text} for i in items]
     except Exception:
         return []
 
@@ -164,17 +155,18 @@ fig.update_yaxes(title_text="Anomaly Score")
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("🔍 Flagged Anomaly Days")
-st.caption("Every flagged day includes historical context where available, live news for very recent flags, or a one-click search for anything older.")
+st.caption("Click any anomaly below to load real news headlines from that exact date.")
 
-recent_flags = df[df['Flagged']].tail(30)
-latest_news_cache = get_latest_news(NEWSDATA_API_KEY)
-now = datetime.now()
+recent_flags = df[df['Flagged']].tail(40).sort_index(ascending=False)
 
-for date_idx, row in recent_flags[::-1].iterrows():
+search_term = st.text_input("🔎 Filter anomalies by date (YYYY-MM-DD) or leave blank to see all", "")
+if search_term:
+    recent_flags = recent_flags[recent_flags.index.strftime("%Y-%m-%d").str.contains(search_term)]
+
+for date_idx, row in recent_flags.iterrows():
     date_str = date_idx.strftime("%Y-%m-%d")
     date_pretty = date_idx.strftime("%B %d, %Y")
-    days_ago = (now - date_idx.to_pydatetime().replace(tzinfo=None)).days
-
+    days_ago = (datetime.now() - date_idx.to_pydatetime().replace(tzinfo=None)).days
     severity = "🔴 Severe" if row['Anomaly_Score'] > row['Threshold']*1.3 else "🟠 Moderate"
 
     st.markdown(f"""
@@ -187,28 +179,26 @@ for date_idx, row in recent_flags[::-1].iterrows():
     </div>
     """, unsafe_allow_html=True)
 
-    query = urllib.parse.quote(f"stock market news {date_pretty}")
-    google_url = f"https://www.google.com/search?q={query}&tbm=nws"
-    gnews_url = f"https://news.google.com/search?q=stock%20market%20{date_str}"
-
-    if date_str in HISTORICAL_EVENTS:
-        st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
-    elif days_ago <= 2 and latest_news_cache:
-        with st.expander("View live news"):
-            for article in latest_news_cache:
+    with st.expander(f"📰 View news from {date_pretty}"):
+        if date_str in HISTORICAL_EVENTS:
+            st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
+        with st.spinner("Fetching headlines..."):
+            news = get_news_for_date(date_str)
+        if news:
+            for article in news:
                 st.markdown(f"""
                 <div class="news-pill">
-                <b>{article.get('title','No title')}</b><br>
-                <span style="color:#9aa0aa;font-size:12px;">{article.get('pubDate','')}</span><br>
-                <a href="{article.get('link','#')}" target="_blank">Read more →</a>
+                <b>{article['title']}</b><br>
+                <span style="color:#9aa0aa;font-size:12px;">{article['pubDate']}</span><br>
+                <a href="{article['link']}" target="_blank">Read more →</a>
                 </div>
                 """, unsafe_allow_html=True)
-    else:
-        st.markdown(f'<a class="search-btn" href="{gnews_url}" target="_blank">🔎 Search news for {date_pretty}</a>', unsafe_allow_html=True)
+        else:
+            st.warning("No headlines found via automated search for this date.")
 
-    st.markdown("<div style='margin-bottom:18px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
 
 st.subheader("Raw Data Explorer")
 st.dataframe(df.tail(100), use_container_width=True)
 
-st.caption("Data source: Yahoo Finance + NewsData.io | Model: Rolling 63-day z-score composite anomaly detection")
+st.caption("Data source: Yahoo Finance + Google News | Model: Rolling 63-day z-score composite anomaly detection")
