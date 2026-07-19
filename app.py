@@ -44,9 +44,20 @@ h1 {
 }
 [data-testid="stMetricValue"] {
     font-weight: 700 !important;
+    font-size: 26px !important;
+    white-space: nowrap;
 }
-div[data-testid="stMetric"]:nth-of-type(4) [data-testid="stMetricValue"] {
-    font-size: 20px !important;
+[data-testid="stMetric"] {
+    min-height: 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+div[data-testid="column"] {
+    display: flex;
+}
+div[data-testid="column"] > div {
+    width: 100%;
 }
 
 .anomaly-card {
@@ -194,7 +205,7 @@ col1.metric("Latest Anomaly Score", f"{latest['Anomaly_Score']:.2f}")
 col2.metric("Threshold", f"{latest['Threshold']:.2f}")
 status = "🔴 ANOMALY" if latest['Flagged'] else "🟢 NORMAL"
 col3.metric("Current Status", status)
-col4.metric("Last Updated", datetime.now().strftime("%b %d, %H:%M"))
+col4.metric("Last Updated", datetime.now().strftime("%d %b, %H:%M"))
 
 st.divider()
 
