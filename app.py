@@ -155,13 +155,36 @@ fig.update_yaxes(title_text="Anomaly Score")
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("🔍 Flagged Anomaly Days")
-st.caption("Click any anomaly below to load real news headlines from that exact date.")
+st.caption("Select a year (and optionally a month) to browse anomalies, then click any card to load real news from that exact date.")
 
-recent_flags = df[df['Flagged']].tail(40).sort_index(ascending=False)
+all_flags = df[df['Flagged']].sort_index(ascending=False)
 
-search_term = st.text_input("🔎 Filter anomalies by date (YYYY-MM-DD) or leave blank to see all", "")
-if search_term:
-    recent_flags = recent_flags[recent_flags.index.strftime("%Y-%m-%d").str.contains(search_term)]
+available_years = sorted(all_flags.index.year.unique(), reverse=True)
+year_options = ["All Years"] + [str(y) for y in available_years]
+
+col_a, col_b = st.columns(2)
+with col_a:
+    selected_year = st.selectbox("📅 Year", year_options)
+with col_b:
+    month_options = ["All Months"]
+    if selected_year != "All Years":
+        months_in_year = sorted(all_flags[all_flags.index.year == int(selected_year)].index.month.unique())
+        month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+        month_options += [month_names[m-1] for m in months_in_year]
+    selected_month = st.selectbox("🗓️ Month (optional)", month_options)
+
+recent_flags = all_flags.copy()
+if selected_year != "All Years":
+    recent_flags = recent_flags[recent_flags.index.year == int(selected_year)]
+if selected_month != "All Months":
+    month_num = ["January","February","March","April","May","June","July","August","September","October","November","December"].index(selected_month) + 1
+    recent_flags = recent_flags[recent_flags.index.month == month_num]
+
+st.caption(f"Showing {len(recent_flags)} anomaly day(s)" + (f" in {selected_year}" if selected_year != "All Years" else " across all history"))
+
+if len(recent_flags) > 60:
+    recent_flags = recent_flags.head(60)
+    st.info("Showing most recent 60 matches. Narrow down by month for more precision.")
 
 for date_idx, row in recent_flags.iterrows():
     date_str = date_idx.strftime("%Y-%m-%d")
