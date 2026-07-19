@@ -5,6 +5,7 @@ import yfinance as yf
 import requests
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import urllib.parse
 
 st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_icon="📊")
 
@@ -17,7 +18,7 @@ st.markdown("""
     border-left: 4px solid #E4572E;
     border-radius: 10px;
     padding: 16px 20px;
-    margin-bottom: 14px;
+    margin-bottom: 6px;
 }
 .anomaly-header {
     display: flex;
@@ -45,6 +46,17 @@ st.markdown("""
     border-radius: 8px;
     padding: 10px 14px;
     margin-top: 10px;
+}
+.search-btn {
+    display: inline-block;
+    background-color: #2E86AB;
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -142,8 +154,8 @@ fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['Anomaly_Score'], mode='line
                           name='Anomaly Score', line=dict(color='#E4572E', width=2),
                           fill='tozeroy', fillcolor='rgba(228,87,46,0.15)'))
 fig.add_hline(y=latest['Threshold'], line_dash='dash', line_color='gray', annotation_text='Threshold')
-flagged = plot_df[plot_df['Flagged']]
-fig.add_trace(go.Scatter(x=flagged.index, y=flagged['Anomaly_Score'], mode='markers',
+flagged_plot = plot_df[plot_df['Flagged']]
+fig.add_trace(go.Scatter(x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
                           name='Flagged Day', marker=dict(color='red', size=6)))
 fig.update_layout(title="Market Anomaly Score Over Time", plot_bgcolor='white',
                    legend=dict(orientation='h', y=1.1))
@@ -152,30 +164,37 @@ fig.update_yaxes(title_text="Anomaly Score")
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("🔍 Flagged Anomaly Days")
-recent_flags = df[df['Flagged']].tail(15)
+st.caption("Every flagged day includes historical context where available, live news for very recent flags, or a one-click search for anything older.")
+
+recent_flags = df[df['Flagged']].tail(30)
 latest_news_cache = get_latest_news(NEWSDATA_API_KEY)
-today_str = datetime.now().strftime("%Y-%m-%d")
+now = datetime.now()
 
 for date_idx, row in recent_flags[::-1].iterrows():
     date_str = date_idx.strftime("%Y-%m-%d")
-    days_ago = (datetime.now() - date_idx.to_pydatetime().replace(tzinfo=None)).days
+    date_pretty = date_idx.strftime("%B %d, %Y")
+    days_ago = (now - date_idx.to_pydatetime().replace(tzinfo=None)).days
 
     severity = "🔴 Severe" if row['Anomaly_Score'] > row['Threshold']*1.3 else "🟠 Moderate"
 
     st.markdown(f"""
     <div class="anomaly-card">
         <div class="anomaly-header">
-            <span>{date_str} &nbsp; <span class="anomaly-badge">{severity}</span></span>
+            <span>{date_pretty} &nbsp; <span class="anomaly-badge">{severity}</span></span>
             <span>Score: {row['Anomaly_Score']:.2f}</span>
         </div>
         <div class="anomaly-meta">S&P 500: {row['S&P500']:.1f} &nbsp;|&nbsp; VIX: {row['VIX']:.1f} &nbsp;|&nbsp; {days_ago} days ago</div>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("View context / news"):
-        if date_str in HISTORICAL_EVENTS:
-            st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
-        elif days_ago <= 2 and latest_news_cache:
+    query = urllib.parse.quote(f"stock market news {date_pretty}")
+    google_url = f"https://www.google.com/search?q={query}&tbm=nws"
+    gnews_url = f"https://news.google.com/search?q=stock%20market%20{date_str}"
+
+    if date_str in HISTORICAL_EVENTS:
+        st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
+    elif days_ago <= 2 and latest_news_cache:
+        with st.expander("View live news"):
             for article in latest_news_cache:
                 st.markdown(f"""
                 <div class="news-pill">
@@ -184,8 +203,10 @@ for date_idx, row in recent_flags[::-1].iterrows():
                 <a href="{article.get('link','#')}" target="_blank">Read more →</a>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.warning(f"No live news available for this date. [Search manually on Google News](https://news.google.com/search?q={date_str}%20stock%20market)")
+    else:
+        st.markdown(f'<a class="search-btn" href="{gnews_url}" target="_blank">🔎 Search news for {date_pretty}</a>', unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom:18px'></div>", unsafe_allow_html=True)
 
 st.subheader("Raw Data Explorer")
 st.dataframe(df.tail(100), use_container_width=True)
