@@ -1,5 +1,4 @@
-pp_code_with_news = '''
-import streamlit as st
+mport streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -147,6 +146,3 @@ st.subheader("Raw Data Explorer")
 st.dataframe(df.tail(100), use_container_width=True)
 
 st.caption("Data source: Yahoo Finance + NewsData.io | Model: Rolling 63-day z-score composite anomaly detection")
-'''
-
-
