@@ -12,6 +12,40 @@ st.markdown("""
 <style>
 .main {background-color: #0e1117;}
 .stMetric {background-color: #1c1f26; padding: 15px; border-radius: 10px;}
+.anomaly-card {
+    background: linear-gradient(135deg, #1c1f26 0%, #23272f 100%);
+    border-left: 4px solid #E4572E;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+}
+.anomaly-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f0f0f0;
+}
+.anomaly-badge {
+    background-color: #E4572E;
+    color: white;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.anomaly-meta {
+    color: #9aa0aa;
+    font-size: 13px;
+    margin-top: 4px;
+}
+.news-pill {
+    background-color: #2a2f3a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -27,10 +61,13 @@ HISTORICAL_EVENTS = {
     "2009-03-09": "S&P 500 bottoms out during the Global Financial Crisis.",
     "2010-05-06": "Flash Crash: Dow Jones drops ~1000 points in minutes.",
     "2011-08-08": "US credit rating downgraded by S&P, sparking global selloff.",
-    "2015-08-24": "China devaluation fears trigger global market selloff ('Black Monday').",
+    "2015-08-24": "China devaluation fears trigger global market selloff (\'Black Monday\').",
+    "2020-02-24": "COVID-19 fears trigger global market selloff as cases spread outside China.",
+    "2020-03-16": "Circuit breakers halt trading as COVID-19 panic selling accelerates.",
+    "2022-06-13": "S&P 500 enters bear market amid rate hike and inflation fears.",
 }
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_data():
     tickers = {
         'S&P500': '^GSPC', 'VIX': '^VIX', 'Gold': 'GC=F',
@@ -46,6 +83,7 @@ def load_data():
     prices = pd.DataFrame(data).dropna()
     return prices
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def compute_anomaly(prices, window=63):
     df = prices.copy()
     assets = ['S&P500', 'Gold', 'Oil_WTI', 'USD_Index']
@@ -64,25 +102,17 @@ def compute_anomaly(prices, window=63):
     df['Flagged'] = df['Anomaly_Score'] > df['Threshold']
     return df
 
-def get_news_for_date(date_str, api_key):
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    if date_obj < datetime(2016, 1, 1):
-        return None
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_latest_news(api_key):
     if not api_key:
-        return "no_key"
+        return []
     try:
-        url = "https://newsdata.io/api/1/archive"
-        params = {
-            "apikey": api_key,
-            "q": "stock market",
-            "from_date": date_str,
-            "to_date": date_str,
-            "language": "en"
-        }
+        url = "https://newsdata.io/api/1/latest"
+        params = {"apikey": api_key, "q": "stock market", "language": "en"}
         resp = requests.get(url, params=params, timeout=10)
         data = resp.json()
         return data.get("results", [])[:5]
-    except Exception as e:
+    except Exception:
         return []
 
 with st.spinner("Loading live market data..."):
@@ -103,9 +133,9 @@ view = st.selectbox("Select time range", ["Last 6 Months", "Last 2 Years", "Full
 if view == "Last 6 Months":
     plot_df = df.tail(126)
 elif view == "Last 2 Years":
-    plot_df = df.tail(504)
+    plot_df = df.tail(504).resample("W").last()
 else:
-    plot_df = df
+    plot_df = df.resample("W").last()
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['Anomaly_Score'], mode='lines',
@@ -121,26 +151,41 @@ fig.update_xaxes(title_text="Date")
 fig.update_yaxes(title_text="Anomaly Score")
 st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("🔍 Flagged Anomaly Days — With News Context")
+st.subheader("🔍 Flagged Anomaly Days")
 recent_flags = df[df['Flagged']].tail(15)
+latest_news_cache = get_latest_news(NEWSDATA_API_KEY)
+today_str = datetime.now().strftime("%Y-%m-%d")
 
 for date_idx, row in recent_flags[::-1].iterrows():
     date_str = date_idx.strftime("%Y-%m-%d")
-    with st.expander(f"{date_str} — Score: {row['Anomaly_Score']:.2f} | S&P500: {row['S&P500']:.1f} | VIX: {row['VIX']:.1f}"):
+    days_ago = (datetime.now() - date_idx.to_pydatetime().replace(tzinfo=None)).days
+
+    severity = "🔴 Severe" if row['Anomaly_Score'] > row['Threshold']*1.3 else "🟠 Moderate"
+
+    st.markdown(f"""
+    <div class="anomaly-card">
+        <div class="anomaly-header">
+            <span>{date_str} &nbsp; <span class="anomaly-badge">{severity}</span></span>
+            <span>Score: {row['Anomaly_Score']:.2f}</span>
+        </div>
+        <div class="anomaly-meta">S&P 500: {row['S&P500']:.1f} &nbsp;|&nbsp; VIX: {row['VIX']:.1f} &nbsp;|&nbsp; {days_ago} days ago</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("View context / news"):
         if date_str in HISTORICAL_EVENTS:
-            st.info(f"📌 Known historical event: {HISTORICAL_EVENTS[date_str]}")
+            st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
+        elif days_ago <= 2 and latest_news_cache:
+            for article in latest_news_cache:
+                st.markdown(f"""
+                <div class="news-pill">
+                <b>{article.get('title','No title')}</b><br>
+                <span style="color:#9aa0aa;font-size:12px;">{article.get('pubDate','')}</span><br>
+                <a href="{article.get('link','#')}" target="_blank">Read more →</a>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            news = get_news_for_date(date_str, NEWSDATA_API_KEY)
-            if news == "no_key":
-                st.warning("News API key not configured yet.")
-            elif news is None:
-                st.info("This date is before 2016 — no live news archive available. Check historical records manually.")
-            elif len(news) == 0:
-                st.info("No news articles found for this date.")
-            else:
-                for article in news:
-                    st.markdown(f"**[{article.get('title','No title')}]({article.get('link','#')})**")
-                    st.caption(article.get('pubDate',''))
+            st.warning(f"No live news available for this date. [Search manually on Google News](https://news.google.com/search?q={date_str}%20stock%20market)")
 
 st.subheader("Raw Data Explorer")
 st.dataframe(df.tail(100), use_container_width=True)
