@@ -12,125 +12,212 @@ st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_ico
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', -apple-system, sans-serif;
 }
 
 .stApp {
-    background: radial-gradient(circle at 15% 0%, #14181f 0%, #0a0c10 45%, #05060a 100%);
+    background: linear-gradient(180deg, #0a0d12 0%, #0d1117 100%);
 }
 
-h1 {
-    background: linear-gradient(90deg, #ff8a5c, #E4572E 60%);
+#MainMenu, footer, header {visibility: hidden;}
+
+.block-container {
+    padding-top: 2rem !important;
+    max-width: 1200px;
+}
+
+.top-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+}
+.brand-title {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.8px;
+    background: linear-gradient(100deg, #ffb08a 0%, #E4572E 55%, #c23f1e 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    font-weight: 800 !important;
-    letter-spacing: -0.5px;
+    margin: 0;
+}
+.brand-sub {
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 500;
+    margin-top: 2px;
+}
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ca3af;
+    letter-spacing: 0.3px;
+}
+.dot-live {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.4; }
+    100% { opacity: 1; }
 }
 
 [data-testid="stMetric"] {
-    background: linear-gradient(145deg, #171a21 0%, #1f2329 100%);
-    border: 1px solid rgba(255,255,255,0.06);
-    padding: 18px 16px;
-    border-radius: 14px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+    background: linear-gradient(160deg, #12151b 0%, #171b22 100%);
+    border: 1px solid rgba(255,255,255,0.07);
+    padding: 20px 20px 16px 20px;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03);
+    min-height: 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: border-color 0.2s ease;
 }
+[data-testid="stMetric"]:hover {
+    border-color: rgba(228,87,46,0.35);
+}
+div[data-testid="column"] { display: flex; }
+div[data-testid="column"] > div { width: 100%; }
+
 [data-testid="stMetricLabel"] {
-    color: #8b93a1 !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
+    color: #6b7280 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
 }
 [data-testid="stMetricValue"] {
     font-weight: 700 !important;
     font-size: 26px !important;
     white-space: nowrap;
+    color: #f5f6f7 !important;
+    font-family: 'JetBrains Mono', monospace;
 }
-[data-testid="stMetric"] {
-    min-height: 92px;
+
+.section-label {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 32px 0 14px 0;
 }
-div[data-testid="column"] {
-    display: flex;
-}
-div[data-testid="column"] > div {
-    width: 100%;
+.section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.12), transparent);
 }
 
 .anomaly-card {
-    background: linear-gradient(150deg, #171a21 0%, #1e222a 100%);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-left: 4px solid #E4572E;
+    background: linear-gradient(160deg, #12151b 0%, #181c24 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #E4572E;
     border-radius: 14px;
     padding: 18px 22px;
     margin-bottom: 8px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
-    transition: transform 0.15s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
 .anomaly-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: #f3f4f6;
-    letter-spacing: -0.2px;
+    letter-spacing: -0.1px;
+}
+.anomaly-score-val {
+    font-family: 'JetBrains Mono', monospace;
+    color: #ff8a5c;
+    font-weight: 700;
 }
 .anomaly-badge {
     background: linear-gradient(90deg, #E4572E, #ff7a45);
     color: white;
-    padding: 4px 12px;
+    padding: 4px 11px;
     border-radius: 20px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
+    margin-left: 10px;
 }
 .anomaly-meta {
-    color: #7d8695;
-    font-size: 13px;
+    color: #6b7280;
+    font-size: 12.5px;
     margin-top: 6px;
     font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
 }
 .news-pill {
-    background: linear-gradient(145deg, #1c202a 0%, #23272f 100%);
+    background: linear-gradient(150deg, #171a21 0%, #1d2129 100%);
     border: 1px solid rgba(255,255,255,0.05);
     border-radius: 10px;
     padding: 12px 16px;
     margin-top: 10px;
 }
-.news-pill a {
-    color: #5eb0e5 !important;
-}
+.news-pill b { color: #e5e7eb; font-size: 14px; }
+.news-pill a { color: #60a5fa !important; font-size: 13px; text-decoration: none; }
+.news-pill a:hover { text-decoration: underline; }
+
 .context-box {
-    background: linear-gradient(145deg, #171a21 0%, #1c2028 100%);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(150deg, #12151b 0%, #171b22 100%);
+    border: 1px solid rgba(255,255,255,0.07);
     border-radius: 14px;
     padding: 18px 22px;
     margin-bottom: 16px;
-    color: #b7bec9;
-    font-size: 14px;
-    line-height: 1.6;
+    color: #9ca3af;
+    font-size: 13.5px;
+    line-height: 1.7;
 }
-.context-box b { color: #f0f0f0; }
+.context-box b { color: #e5e7eb; }
 
 [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255,255,255,0.015);
     border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+[data-testid="stSelectbox"] label, .stTextInput label {
+    color: #9ca3af !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
 }
 
 hr, [data-testid="stDivider"] {
-    border-color: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.07) !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Market Anomaly & Crisis Detector")
-st.caption("Live statistical monitoring of market stress using rolling z-scores across major asset classes")
+st.markdown("""
+<div class="top-header">
+    <div>
+        <div class="brand-title">Market Anomaly &amp; Crisis Detector</div>
+        <div class="brand-sub">Live statistical monitoring of market stress across five major asset classes</div>
+    </div>
+    <div class="status-chip"><span class="dot-live"></span> LIVE DATA</div>
+</div>
+""", unsafe_allow_html=True)
 
 HISTORICAL_EVENTS = {
     "2008-09-15": "Lehman Brothers files for bankruptcy, triggering global financial crisis.",
@@ -256,7 +343,7 @@ fig.update_traces(cliponaxis=False)
 
 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-st.subheader("🔍 Flagged Anomaly Days")
+st.markdown('<div class="section-label">🔍&nbsp; Flagged Anomaly Days</div>', unsafe_allow_html=True)
 st.caption("Select a year (and optionally a month) to browse anomalies, then click any card to load real news from that exact date.")
 
 all_flags = df[df['Flagged']].sort_index(ascending=False)
@@ -297,10 +384,10 @@ for date_idx, row in recent_flags.iterrows():
     st.markdown(f"""
     <div class="anomaly-card">
         <div class="anomaly-header">
-            <span>{date_pretty} &nbsp; <span class="anomaly-badge">{severity}</span></span>
-            <span>Score: {row['Anomaly_Score']:.2f}</span>
+            <span>{date_pretty}<span class="anomaly-badge">{severity}</span></span>
+            <span class="anomaly-score-val">{row['Anomaly_Score']:.2f}</span>
         </div>
-        <div class="anomaly-meta">S&P 500: {row['S&P500']:.1f} &nbsp;|&nbsp; VIX: {row['VIX']:.1f} &nbsp;|&nbsp; {days_ago} days ago</div>
+        <div class="anomaly-meta">S&amp;P 500 {row['S&P500']:.1f}  ·  VIX {row['VIX']:.1f}  ·  {days_ago}d ago</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -323,7 +410,7 @@ for date_idx, row in recent_flags.iterrows():
 
     st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
 
-st.subheader("Raw Data Explorer")
+st.markdown('<div class="section-label">📁&nbsp; Raw Data Explorer</div>', unsafe_allow_html=True)
 st.markdown("""
 <div class="context-box">
 <b>What am I looking at?</b><br>
