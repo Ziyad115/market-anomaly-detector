@@ -12,42 +12,105 @@ st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_ico
 
 st.markdown("""
 <style>
-.main {background-color: #0e1117;}
-.stMetric {background-color: #1c1f26; padding: 15px; border-radius: 10px;}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+.stApp {
+    background: radial-gradient(circle at 15% 0%, #14181f 0%, #0a0c10 45%, #05060a 100%);
+}
+
+h1 {
+    background: linear-gradient(90deg, #ff8a5c, #E4572E 60%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800 !important;
+    letter-spacing: -0.5px;
+}
+
+[data-testid="stMetric"] {
+    background: linear-gradient(145deg, #171a21 0%, #1f2329 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 18px 16px;
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+}
+[data-testid="stMetricLabel"] {
+    color: #8b93a1 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+[data-testid="stMetricValue"] {
+    font-weight: 700 !important;
+}
+
 .anomaly-card {
-    background: linear-gradient(135deg, #1c1f26 0%, #23272f 100%);
+    background: linear-gradient(150deg, #171a21 0%, #1e222a 100%);
+    border: 1px solid rgba(255,255,255,0.05);
     border-left: 4px solid #E4572E;
-    border-radius: 10px;
-    padding: 16px 20px;
-    margin-bottom: 6px;
-    cursor: pointer;
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    transition: transform 0.15s ease;
 }
 .anomaly-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 16px;
-    font-weight: 600;
-    color: #f0f0f0;
+    font-weight: 700;
+    color: #f3f4f6;
+    letter-spacing: -0.2px;
 }
 .anomaly-badge {
-    background-color: #E4572E;
+    background: linear-gradient(90deg, #E4572E, #ff7a45);
     color: white;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
     font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 .anomaly-meta {
-    color: #9aa0aa;
+    color: #7d8695;
     font-size: 13px;
-    margin-top: 4px;
+    margin-top: 6px;
+    font-weight: 500;
 }
 .news-pill {
-    background-color: #2a2f3a;
-    border-radius: 8px;
-    padding: 10px 14px;
+    background: linear-gradient(145deg, #1c202a 0%, #23272f 100%);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 12px 16px;
     margin-top: 10px;
+}
+.news-pill a {
+    color: #5eb0e5 !important;
+}
+.context-box {
+    background: linear-gradient(145deg, #171a21 0%, #1c2028 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    color: #b7bec9;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.context-box b { color: #f0f0f0; }
+
+[data-testid="stExpander"] {
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+hr, [data-testid="stDivider"] {
+    border-color: rgba(255,255,255,0.08) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -222,6 +285,16 @@ for date_idx, row in recent_flags.iterrows():
     st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
 
 st.subheader("Raw Data Explorer")
+st.markdown("""
+<div class="context-box">
+<b>What am I looking at?</b><br>
+This table shows the last 100 trading days of raw and calculated data feeding the model above.
+Each asset (S&P 500, Gold, Oil, USD Index, VIX) has its <b>daily return</b>, <b>63-day rolling mean/std</b>,
+and resulting <b>z-score</b> — the number of standard deviations that day's move was from its recent norm.
+The final <b>Anomaly_Score</b> combines all z-scores into one composite reading, and <b>Flagged</b> marks
+days where that score crossed the statistical threshold (mean + 2 standard deviations).
+</div>
+""", unsafe_allow_html=True)
 st.dataframe(df.tail(100), use_container_width=True)
 
 st.caption("Data source: Yahoo Finance + Google News | Model: Rolling 63-day z-score composite anomaly detection")
