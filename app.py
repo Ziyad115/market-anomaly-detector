@@ -8,207 +8,187 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import urllib.parse
 
-st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_icon="📈")
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  DESIGN SYSTEM
+#  Dark-slate base · glass surfaces · cyan/indigo neon · red/amber for stress
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, sans-serif;
-}
-
-.stApp {
-    background: linear-gradient(180deg, #0a0d12 0%, #0d1117 100%);
-}
-
-#MainMenu, footer, header {visibility: hidden;}
-
-.block-container {
-    padding-top: 2rem !important;
-    max-width: 1200px;
-}
-
-.top-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-bottom: 4px;
-    margin-bottom: 8px;
-}
-.brand-title {
-    font-size: 30px;
-    font-weight: 800;
-    letter-spacing: -0.8px;
-    background: linear-gradient(100deg, #ffb08a 0%, #E4572E 55%, #c23f1e 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0;
-}
-.brand-sub {
-    color: #6b7280;
-    font-size: 14px;
-    font-weight: 500;
-    margin-top: 2px;
-}
-.status-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 999px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #9ca3af;
-    letter-spacing: 0.3px;
-}
-.dot-live {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #22c55e;
-    box-shadow: 0 0 8px #22c55e;
-    animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.4; }
-    100% { opacity: 1; }
+:root{
+    --bg-0:#070A0F;
+    --bg-1:#0B111A;
+    --glass:rgba(19,26,37,0.60);
+    --glass-hi:rgba(26,34,48,0.60);
+    --stroke:rgba(148,163,184,0.12);
+    --stroke-strong:rgba(148,163,184,0.24);
+    --txt:#E8EEF5;
+    --txt-dim:#8C97A8;
+    --txt-faint:#5A6576;
+    --neon:#22D3EE;      /* cyan  */
+    --neon-2:#818CF8;    /* indigo*/
+    --pos:#34D399;       /* green */
+    --warn:#FBBF24;      /* amber */
+    --danger:#FB4B57;    /* red   */
+    --mono:'JetBrains Mono', ui-monospace, monospace;
 }
 
-[data-testid="stMetric"] {
-    background: linear-gradient(160deg, #12151b 0%, #171b22 100%);
-    border: 1px solid rgba(255,255,255,0.07);
-    padding: 20px 20px 16px 20px;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03);
-    min-height: 96px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    transition: border-color 0.2s ease;
-}
-[data-testid="stMetric"]:hover {
-    border-color: rgba(228,87,46,0.35);
-}
-div[data-testid="column"] { display: flex; }
-div[data-testid="column"] > div { width: 100%; }
-
-[data-testid="stMetricLabel"] {
-    color: #6b7280 !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-}
-[data-testid="stMetricValue"] {
-    font-weight: 700 !important;
-    font-size: 26px !important;
-    white-space: nowrap;
-    color: #f5f6f7 !important;
-    font-family: 'JetBrains Mono', monospace;
+html, body, [class*="css"]{
+    font-family:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.section-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 32px 0 14px 0;
+.stApp{
+    background:
+        radial-gradient(1100px 560px at 12% -12%, rgba(34,211,238,0.10), transparent 60%),
+        radial-gradient(1000px 520px at 102% -6%, rgba(129,140,248,0.09), transparent 58%),
+        linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+    background-attachment:fixed;
+    color:var(--txt);
 }
-.section-label::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg, rgba(255,255,255,0.12), transparent);
+#MainMenu, footer, header {visibility:hidden;}
+.block-container{ padding-top:1.6rem !important; padding-bottom:3rem !important; max-width:1220px; }
+
+/* selection + scrollbar polish */
+::selection{ background:rgba(34,211,238,0.28); }
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-thumb{ background:rgba(148,163,184,0.18); border-radius:8px; }
+::-webkit-scrollbar-thumb:hover{ background:rgba(148,163,184,0.30); }
+
+/* ── HEADER ─────────────────────────────────────────────── */
+.top-header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding:6px 2px 2px; margin-bottom:22px;
+}
+.brand-title{
+    font-size:32px; font-weight:900; letter-spacing:-1px; line-height:1.05; margin:0;
+    background:linear-gradient(100deg,#A5F3FC 0%, #22D3EE 42%, #818CF8 100%);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+.brand-sub{ color:var(--txt-dim); font-size:13.5px; font-weight:500; margin-top:5px; letter-spacing:0.1px; }
+.status-chip{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--glass); border:1px solid var(--stroke); border-radius:999px;
+    padding:8px 16px; font-size:11.5px; font-weight:700; color:#B7C0CE; letter-spacing:0.8px;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    box-shadow:0 6px 20px rgba(0,0,0,0.35);
+}
+.dot-live{ width:8px; height:8px; border-radius:50%; background:var(--pos);
+    box-shadow:0 0 0 0 rgba(52,211,153,0.6); animation:pulse 2s infinite; }
+@keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(52,211,153,0.55);}
+    70%{ box-shadow:0 0 0 7px rgba(52,211,153,0);}
+    100%{ box-shadow:0 0 0 0 rgba(52,211,153,0);}
 }
 
-.anomaly-card {
-    background: linear-gradient(160deg, #12151b 0%, #181c24 100%);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-left: 3px solid #E4572E;
-    border-radius: 14px;
-    padding: 18px 22px;
-    margin-bottom: 8px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+/* ── KPI CARDS ──────────────────────────────────────────── */
+.kpi-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin:2px 0 6px; }
+@media(max-width:880px){ .kpi-grid{ grid-template-columns:repeat(2,1fr);} }
+.kpi{
+    position:relative; overflow:hidden; padding:18px 18px 17px; border-radius:18px;
+    background:var(--glass); border:1px solid var(--stroke);
+    box-shadow:0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+    backdrop-filter:blur(14px) saturate(120%); -webkit-backdrop-filter:blur(14px) saturate(120%);
+    transition:transform .18s ease, border-color .18s ease;
 }
-.anomaly-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 15px;
-    font-weight: 700;
-    color: #f3f4f6;
-    letter-spacing: -0.1px;
-}
-.anomaly-score-val {
-    font-family: 'JetBrains Mono', monospace;
-    color: #ff8a5c;
-    font-weight: 700;
-}
-.anomaly-badge {
-    background: linear-gradient(90deg, #E4572E, #ff7a45);
-    color: white;
-    padding: 4px 11px;
-    border-radius: 20px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-left: 10px;
-}
-.anomaly-meta {
-    color: #6b7280;
-    font-size: 12.5px;
-    margin-top: 6px;
-    font-weight: 500;
-    font-family: 'JetBrains Mono', monospace;
-}
-.news-pill {
-    background: linear-gradient(150deg, #171a21 0%, #1d2129 100%);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 10px;
-    padding: 12px 16px;
-    margin-top: 10px;
-}
-.news-pill b { color: #e5e7eb; font-size: 14px; }
-.news-pill a { color: #60a5fa !important; font-size: 13px; text-decoration: none; }
-.news-pill a:hover { text-decoration: underline; }
+.kpi:hover{ transform:translateY(-2px); border-color:var(--stroke-strong); }
+.kpi::after{ content:""; position:absolute; left:0; right:0; top:0; height:2px;
+    background:linear-gradient(90deg, transparent, var(--acc, var(--neon)), transparent); opacity:.85; }
+.kpi-top{ display:flex; align-items:center; justify-content:space-between; }
+.kpi-ico{ width:36px; height:36px; border-radius:11px; display:grid; place-items:center;
+    color:var(--acc, var(--neon));
+    background:color-mix(in srgb, var(--acc, var(--neon)) 12%, transparent);
+    border:1px solid color-mix(in srgb, var(--acc, var(--neon)) 30%, transparent); }
+.kpi-ico svg{ width:19px; height:19px; }
+.kpi-label{ font-size:10.5px; font-weight:800; letter-spacing:0.9px; text-transform:uppercase; color:var(--txt-faint); }
+.kpi-value{ font-family:var(--mono); font-size:27px; font-weight:700; color:var(--txt);
+    margin-top:12px; line-height:1; letter-spacing:-0.6px; white-space:nowrap; }
+.kpi-sub{ font-size:11.5px; color:var(--txt-dim); margin-top:8px; font-weight:600; letter-spacing:0.2px; }
+.kpi-sub .up{ color:var(--danger); } .kpi-sub .down{ color:var(--pos); }
 
-.context-box {
-    background: linear-gradient(150deg, #12151b 0%, #171b22 100%);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 14px;
-    padding: 18px 22px;
-    margin-bottom: 16px;
-    color: #9ca3af;
-    font-size: 13.5px;
-    line-height: 1.7;
+/* ── SECTION LABELS ─────────────────────────────────────── */
+.section-label{
+    display:flex; align-items:center; gap:12px; font-size:12px; font-weight:800;
+    color:#AEB7C4; text-transform:uppercase; letter-spacing:1.4px; margin:34px 0 15px;
 }
-.context-box b { color: #e5e7eb; }
+.section-label .sq{ width:7px; height:7px; border-radius:2px; background:var(--neon);
+    box-shadow:0 0 10px var(--neon); }
+.section-label::after{ content:""; flex:1; height:1px;
+    background:linear-gradient(90deg, rgba(148,163,184,0.22), transparent); }
 
-[data-testid="stExpander"] {
-    background: rgba(255,255,255,0.015);
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.06);
+/* ── ALERT / ANOMALY CARDS ──────────────────────────────── */
+.alert{
+    position:relative; display:flex; border-radius:16px; overflow:hidden; margin-bottom:6px;
+    background:var(--glass); border:1px solid var(--stroke);
+    box-shadow:0 10px 26px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.04);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    transition:border-color .18s ease, transform .18s ease;
 }
+.alert:hover{ transform:translateX(2px); border-color:var(--stroke-strong); }
+.alert-rail{ flex:0 0 4px; background:var(--sev); box-shadow:0 0 16px var(--sev); }
+.alert-body{ flex:1; padding:15px 20px 16px; }
+.alert-row1{ display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.alert-left{ display:flex; align-items:center; gap:11px; }
+.alert-date{ font-size:15.5px; font-weight:700; color:var(--txt); letter-spacing:-0.2px; }
+.sev-pill{ font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.7px;
+    padding:4px 10px; border-radius:999px; color:var(--sev);
+    background:color-mix(in srgb, var(--sev) 13%, transparent);
+    border:1px solid color-mix(in srgb, var(--sev) 34%, transparent); }
+.alert-score{ font-family:var(--mono); font-weight:700; font-size:17px; color:var(--sev); }
+.alert-stats{ display:flex; gap:9px; margin-top:13px; flex-wrap:wrap; }
+.stat{ background:rgba(255,255,255,0.028); border:1px solid var(--stroke); border-radius:9px; padding:6px 12px; }
+.stat-k{ font-size:9px; text-transform:uppercase; letter-spacing:0.6px; color:var(--txt-faint); font-weight:800; }
+.stat-v{ font-family:var(--mono); font-size:13px; color:#D5DCE6; font-weight:600; margin-top:2px; }
 
-[data-testid="stSelectbox"] label, .stTextInput label {
-    color: #9ca3af !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
+/* historical event note */
+.event-note{
+    display:flex; gap:10px; align-items:flex-start; margin:2px 0 10px;
+    background:linear-gradient(150deg, rgba(129,140,248,0.10), rgba(34,211,238,0.06));
+    border:1px solid rgba(129,140,248,0.28); border-radius:12px; padding:12px 15px;
+    color:#D7DCEC; font-size:13px; line-height:1.55; font-weight:500;
 }
+.event-note .pin{ color:var(--neon-2); font-size:14px; line-height:1.4; }
 
-hr, [data-testid="stDivider"] {
-    border-color: rgba(255,255,255,0.07) !important;
+/* news pills */
+.news{ background:rgba(255,255,255,0.026); border:1px solid var(--stroke); border-radius:12px;
+    padding:12px 15px; margin-top:9px; }
+.news-title{ color:#E6EBF2; font-size:13.5px; font-weight:600; line-height:1.45; }
+.news-date{ color:var(--txt-faint); font-size:11px; margin-top:5px; font-family:var(--mono); }
+.news-link{ display:inline-block; margin-top:9px; color:var(--neon); font-size:12px; font-weight:700;
+    text-decoration:none; letter-spacing:0.2px; }
+.news-link:hover{ text-decoration:underline; }
+
+/* context / raw-data explainer */
+.context-box{
+    background:var(--glass); border:1px solid var(--stroke); border-radius:16px;
+    padding:18px 22px; margin-bottom:16px; color:var(--txt-dim); font-size:13.5px; line-height:1.75;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
 }
+.context-box b{ color:#DCE3EC; }
+
+/* ── STREAMLIT WIDGET OVERRIDES ─────────────────────────── */
+[data-testid="stExpander"]{
+    background:rgba(255,255,255,0.02); border-radius:12px; border:1px solid var(--stroke); margin-top:2px;
+}
+[data-testid="stExpander"] summary{ font-size:13px; font-weight:600; color:#AEB7C4; }
+[data-baseweb="select"] > div{
+    background:var(--glass) !important; border:1px solid var(--stroke) !important;
+    border-radius:12px !important; color:var(--txt) !important;
+}
+[data-baseweb="select"] > div:hover{ border-color:var(--stroke-strong) !important; }
+[data-testid="stSelectbox"] label, .stTextInput label{
+    color:#AEB7C4 !important; font-size:11.5px !important; font-weight:700 !important;
+    letter-spacing:0.5px !important; text-transform:uppercase;
+}
+[data-testid="stCaptionContainer"]{ color:var(--txt-faint) !important; }
+[data-testid="stDataFrame"]{ border:1px solid var(--stroke); border-radius:12px; overflow:hidden; }
+hr, [data-testid="stDivider"]{ border-color:var(--stroke) !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ── HEADER ───────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="top-header">
     <div>
@@ -226,12 +206,13 @@ HISTORICAL_EVENTS = {
     "2009-03-09": "S&P 500 bottoms out during the Global Financial Crisis.",
     "2010-05-06": "Flash Crash: Dow Jones drops ~1000 points in minutes.",
     "2011-08-08": "US credit rating downgraded by S&P, sparking global selloff.",
-    "2015-08-24": "China devaluation fears trigger global market selloff (\'Black Monday\').",
+    "2015-08-24": "China devaluation fears trigger global market selloff ('Black Monday').",
     "2020-02-24": "COVID-19 fears trigger global market selloff as cases spread outside China.",
     "2020-03-16": "Circuit breakers halt trading as COVID-19 panic selling accelerates.",
     "2022-06-13": "S&P 500 enters bear market amid rate hike and inflation fears.",
 }
 
+# ── DATA LOGIC (unchanged) ───────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_data():
     tickers = {
@@ -287,14 +268,49 @@ with st.spinner("Loading live market data..."):
     df = compute_anomaly(prices)
 
 latest = df.iloc[-1]
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Latest Anomaly Score", f"{latest['Anomaly_Score']:.2f}")
-col2.metric("Threshold", f"{latest['Threshold']:.2f}")
-status = "🔴 ANOMALY" if latest['Flagged'] else "🟢 NORMAL"
-col3.metric("Current Status", status)
-col4.metric("Last Updated", datetime.now().strftime("%d %b, %H:%M"))
 
-st.divider()
+# ── KPI CARDS ────────────────────────────────────────────────────────────────
+ICO = {
+    "activity": '<path d="M22 12h-4l-3 8L9 4l-3 8H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    "target":   '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+    "shield":   '<path d="M12 21s7-3.4 7-9V5.5L12 3 5 5.5V12c0 5.6 7 9 7 9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 8.5v3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="0.6" fill="currentColor" stroke="currentColor" stroke-width="1"/>',
+    "clock":    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v5l3.2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+}
+
+def kpi(icon, label, value, sub, accent):
+    return f"""
+    <div class="kpi" style="--acc:{accent}">
+        <div class="kpi-top">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-ico"><svg viewBox="0 0 24 24">{ICO[icon]}</svg></div>
+        </div>
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-sub">{sub}</div>
+    </div>"""
+
+score = latest['Anomaly_Score']
+thresh = latest['Threshold']
+gap = score - thresh
+if gap >= 0:
+    gap_sub = f'<span class="up">▲ {gap:.2f} above threshold</span>'
+else:
+    gap_sub = f'<span class="down">▼ {abs(gap):.2f} below threshold</span>'
+
+flagged_now = bool(latest['Flagged'])
+status_txt = "ANOMALY" if flagged_now else "NORMAL"
+status_acc = "var(--danger)" if flagged_now else "var(--pos)"
+status_sub = "Market stress detected" if flagged_now else "Within normal range"
+
+cards = "".join([
+    kpi("activity", "Latest Anomaly Score", f"{score:.2f}", gap_sub, "var(--neon)"),
+    kpi("target",   "Threshold",            f"{thresh:.2f}", "mean + 2σ baseline", "var(--neon-2)"),
+    kpi("shield",   "Current Status",        status_txt, status_sub, status_acc),
+    kpi("clock",    "Last Updated",          datetime.now().strftime("%d %b · %H:%M"), "Auto-refresh · 60 min", "#94A3B8"),
+])
+st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)
+
+# ── CHART ────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-label"><span class="sq"></span> Anomaly Score Timeline</div>', unsafe_allow_html=True)
 
 view = st.selectbox("Select time range", ["Last 6 Months", "Last 2 Years", "Full History (2005-Present)"])
 if view == "Last 6 Months":
@@ -304,47 +320,77 @@ elif view == "Last 2 Years":
 else:
     plot_df = df.resample("W").last()
 
+y_top = max(plot_df['Anomaly_Score'].max(), thresh) * 1.10
+
 fig = go.Figure()
 
+# danger zone above the threshold
+fig.add_hrect(y0=thresh, y1=y_top, line_width=0, fillcolor="rgba(251,75,87,0.055)", layer="below")
+
+# soft neon glow underlay for the score line
+fig.add_trace(go.Scatter(
+    x=plot_df.index, y=plot_df['Anomaly_Score'], mode='lines',
+    line=dict(color='rgba(34,211,238,0.28)', width=9, shape='spline', smoothing=0.35),
+    hoverinfo='skip', showlegend=False
+))
+# main score line + fill
 fig.add_trace(go.Scatter(
     x=plot_df.index, y=plot_df['Anomaly_Score'], mode='lines',
     name='Anomaly Score',
-    line=dict(color='#ff7a45', width=2.5, shape='spline', smoothing=0.3),
-    fill='tozeroy', fillcolor='rgba(228,87,46,0.18)',
-    hovertemplate='%{x|%b %d, %Y}<br>Score: %{y:.2f}<extra></extra>'
+    line=dict(color='#22D3EE', width=2.4, shape='spline', smoothing=0.35),
+    fill='tozeroy', fillcolor='rgba(34,211,238,0.10)',
+    hovertemplate='Score  <b>%{y:.2f}</b><extra></extra>'
 ))
 
 fig.add_hline(
-    y=latest['Threshold'], line_dash='dot', line_color='rgba(255,255,255,0.35)', line_width=1.5,
-    annotation_text='Anomaly Threshold', annotation_font_color='#9aa0aa',
-    annotation_font_size=12, annotation_position='top left'
+    y=thresh, line_dash='dot', line_color='rgba(226,232,240,0.35)', line_width=1.4,
+    annotation_text='THRESHOLD', annotation_font_color='#94A3B8',
+    annotation_font_size=10, annotation_position='top left'
 )
 
 flagged_plot = plot_df[plot_df['Flagged']]
+# glow halo under flagged markers
+fig.add_trace(go.Scatter(
+    x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
+    marker=dict(color='rgba(251,75,87,0.28)', size=18, symbol='circle'),
+    hoverinfo='skip', showlegend=False
+))
 fig.add_trace(go.Scatter(
     x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
     name='Flagged Day',
-    marker=dict(color='#ff3b30', size=8, line=dict(color='#0e1117', width=1.5), symbol='circle'),
-    hovertemplate='⚠️ %{x|%b %d, %Y}<br>Score: %{y:.2f}<extra></extra>'
+    marker=dict(color='#FB4B57', size=8, line=dict(color='#0B111A', width=1.6), symbol='circle'),
+    hovertemplate='⚠ Flagged  ·  <b>%{y:.2f}</b><extra></extra>'
 ))
 
 fig.update_layout(
-    title=dict(text="Market Anomaly Score Over Time", font=dict(size=18, color='#f0f0f0', family='Inter')),
+    height=430,
     plot_bgcolor='rgba(0,0,0,0)',
     paper_bgcolor='rgba(0,0,0,0)',
-    font=dict(color='#c8ccd4', family='Inter'),
-    legend=dict(orientation='h', y=1.12, x=0.5, xanchor='center', bgcolor='rgba(0,0,0,0)'),
-    margin=dict(l=10, r=10, t=60, b=10),
-    hovermode='x unified'
+    font=dict(color='#AEB7C4', family='Inter', size=12),
+    legend=dict(orientation='h', y=1.10, x=1, xanchor='right', bgcolor='rgba(0,0,0,0)',
+                font=dict(size=11, color='#8C97A8')),
+    margin=dict(l=8, r=8, t=34, b=8),
+    hovermode='x unified',
+    hoverlabel=dict(bgcolor='rgba(13,19,28,0.94)', bordercolor='rgba(148,163,184,0.25)',
+                    font=dict(family='JetBrains Mono', size=12, color='#E8EEF5')),
 )
-fig.update_xaxes(title_text="Date", showgrid=False, showline=True, linecolor='rgba(255,255,255,0.1)', zeroline=False)
-fig.update_yaxes(title_text="Anomaly Score", showgrid=True, gridcolor='rgba(255,255,255,0.06)', zeroline=False)
+fig.update_xaxes(
+    showgrid=False, showline=True, linecolor='rgba(148,163,184,0.14)', zeroline=False,
+    showspikes=True, spikemode='across', spikecolor='rgba(148,163,184,0.28)',
+    spikethickness=1, spikedash='dot', ticks='outside', tickcolor='rgba(148,163,184,0.14)',
+    tickfont=dict(size=11)
+)
+fig.update_yaxes(
+    range=[0, y_top], showgrid=True, gridcolor='rgba(148,163,184,0.07)', zeroline=False,
+    tickfont=dict(size=11), ticksuffix='  '
+)
 fig.update_traces(cliponaxis=False)
 
 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-st.markdown('<div class="section-label">🔍&nbsp; Flagged Anomaly Days</div>', unsafe_allow_html=True)
-st.caption("Select a year (and optionally a month) to browse anomalies, then click any card to load real news from that exact date.")
+# ── FLAGGED ANOMALY DAYS ─────────────────────────────────────────────────────
+st.markdown('<div class="section-label"><span class="sq"></span> Flagged Anomaly Days</div>', unsafe_allow_html=True)
+st.caption("Select a year (and optionally a month) to browse anomalies, then expand any card to load real news from that exact date.")
 
 all_flags = df[df['Flagged']].sort_index(ascending=False)
 
@@ -353,14 +399,14 @@ year_options = ["All Years"] + [str(y) for y in available_years]
 
 col_a, col_b = st.columns(2)
 with col_a:
-    selected_year = st.selectbox("📅 Year", year_options)
+    selected_year = st.selectbox("Year", year_options)
 with col_b:
     month_options = ["All Months"]
     if selected_year != "All Years":
         months_in_year = sorted(all_flags[all_flags.index.year == int(selected_year)].index.month.unique())
         month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
         month_options += [month_names[m-1] for m in months_in_year]
-    selected_month = st.selectbox("🗓️ Month (optional)", month_options)
+    selected_month = st.selectbox("Month (optional)", month_options)
 
 recent_flags = all_flags.copy()
 if selected_year != "All Years":
@@ -379,30 +425,43 @@ for date_idx, row in recent_flags.iterrows():
     date_str = date_idx.strftime("%Y-%m-%d")
     date_pretty = date_idx.strftime("%B %d, %Y")
     days_ago = (datetime.now() - date_idx.to_pydatetime().replace(tzinfo=None)).days
-    severity = "🔴 Severe" if row['Anomaly_Score'] > row['Threshold']*1.3 else "🟠 Moderate"
+    is_severe = row['Anomaly_Score'] > row['Threshold'] * 1.3
+    sev_label = "Severe" if is_severe else "Moderate"
+    sev_color = "var(--danger)" if is_severe else "var(--warn)"
 
     st.markdown(f"""
-    <div class="anomaly-card">
-        <div class="anomaly-header">
-            <span>{date_pretty}<span class="anomaly-badge">{severity}</span></span>
-            <span class="anomaly-score-val">{row['Anomaly_Score']:.2f}</span>
+    <div class="alert" style="--sev:{sev_color}">
+        <div class="alert-rail"></div>
+        <div class="alert-body">
+            <div class="alert-row1">
+                <div class="alert-left">
+                    <span class="alert-date">{date_pretty}</span>
+                    <span class="sev-pill">{sev_label}</span>
+                </div>
+                <span class="alert-score">{row['Anomaly_Score']:.2f}</span>
+            </div>
+            <div class="alert-stats">
+                <div class="stat"><div class="stat-k">S&amp;P 500</div><div class="stat-v">{row['S&P500']:,.1f}</div></div>
+                <div class="stat"><div class="stat-k">VIX</div><div class="stat-v">{row['VIX']:.1f}</div></div>
+                <div class="stat"><div class="stat-k">Threshold</div><div class="stat-v">{row['Threshold']:.2f}</div></div>
+                <div class="stat"><div class="stat-k">When</div><div class="stat-v">{days_ago}d ago</div></div>
+            </div>
         </div>
-        <div class="anomaly-meta">S&amp;P 500 {row['S&P500']:.1f}  ·  VIX {row['VIX']:.1f}  ·  {days_ago}d ago</div>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander(f"📰 View news from {date_pretty}"):
+    with st.expander(f"📰  View news from {date_pretty}"):
         if date_str in HISTORICAL_EVENTS:
-            st.info(f"📌 {HISTORICAL_EVENTS[date_str]}")
+            st.markdown(f'<div class="event-note"><span class="pin">📌</span><span>{HISTORICAL_EVENTS[date_str]}</span></div>', unsafe_allow_html=True)
         with st.spinner("Fetching headlines..."):
             news = get_news_for_date(date_str)
         if news:
             for article in news:
                 st.markdown(f"""
-                <div class="news-pill">
-                <b>{article['title']}</b><br>
-                <span style="color:#9aa0aa;font-size:12px;">{article['pubDate']}</span><br>
-                <a href="{article['link']}" target="_blank">Read more →</a>
+                <div class="news">
+                    <div class="news-title">{article['title']}</div>
+                    <div class="news-date">{article['pubDate']}</div>
+                    <a class="news-link" href="{article['link']}" target="_blank">Read more →</a>
                 </div>
                 """, unsafe_allow_html=True)
         else:
@@ -410,7 +469,8 @@ for date_idx, row in recent_flags.iterrows():
 
     st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
 
-st.markdown('<div class="section-label">📁&nbsp; Raw Data Explorer</div>', unsafe_allow_html=True)
+# ── RAW DATA EXPLORER ────────────────────────────────────────────────────────
+st.markdown('<div class="section-label"><span class="sq"></span> Raw Data Explorer</div>', unsafe_allow_html=True)
 st.markdown("""
 <div class="context-box">
 <b>What am I looking at?</b><br>
@@ -423,4 +483,4 @@ days where that score crossed the statistical threshold (mean + 2 standard devia
 """, unsafe_allow_html=True)
 st.dataframe(df.tail(100), use_container_width=True)
 
-st.caption("Data source: Yahoo Finance + Google News | Model: Rolling 63-day z-score composite anomaly detection")
+st.caption("Data source: Yahoo Finance + Google News  ·  Model: Rolling 63-day z-score composite anomaly detection")
