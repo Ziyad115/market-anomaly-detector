@@ -149,7 +149,4 @@ st.dataframe(df.tail(100), use_container_width=True)
 st.caption("Data source: Yahoo Finance + NewsData.io | Model: Rolling 63-day z-score composite anomaly detection")
 '''
 
-with open('output/app.py', 'w') as f:
-    f.write(app_code_with_news)
 
-print("app.py updated with news integration,", len(app_code_with_news), "chars")
