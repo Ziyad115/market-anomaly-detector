@@ -45,6 +45,9 @@ h1 {
 [data-testid="stMetricValue"] {
     font-weight: 700 !important;
 }
+div[data-testid="stMetric"]:nth-of-type(4) [data-testid="stMetricValue"] {
+    font-size: 20px !important;
+}
 
 .anomaly-card {
     background: linear-gradient(150deg, #171a21 0%, #1e222a 100%);
@@ -191,7 +194,7 @@ col1.metric("Latest Anomaly Score", f"{latest['Anomaly_Score']:.2f}")
 col2.metric("Threshold", f"{latest['Threshold']:.2f}")
 status = "🔴 ANOMALY" if latest['Flagged'] else "🟢 NORMAL"
 col3.metric("Current Status", status)
-col4.metric("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M"))
+col4.metric("Last Updated", datetime.now().strftime("%b %d, %H:%M"))
 
 st.divider()
 
@@ -204,18 +207,43 @@ else:
     plot_df = df.resample("W").last()
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['Anomaly_Score'], mode='lines',
-                          name='Anomaly Score', line=dict(color='#E4572E', width=2),
-                          fill='tozeroy', fillcolor='rgba(228,87,46,0.15)'))
-fig.add_hline(y=latest['Threshold'], line_dash='dash', line_color='gray', annotation_text='Threshold')
+
+fig.add_trace(go.Scatter(
+    x=plot_df.index, y=plot_df['Anomaly_Score'], mode='lines',
+    name='Anomaly Score',
+    line=dict(color='#ff7a45', width=2.5, shape='spline', smoothing=0.3),
+    fill='tozeroy', fillcolor='rgba(228,87,46,0.18)',
+    hovertemplate='%{x|%b %d, %Y}<br>Score: %{y:.2f}<extra></extra>'
+))
+
+fig.add_hline(
+    y=latest['Threshold'], line_dash='dot', line_color='rgba(255,255,255,0.35)', line_width=1.5,
+    annotation_text='Anomaly Threshold', annotation_font_color='#9aa0aa',
+    annotation_font_size=12, annotation_position='top left'
+)
+
 flagged_plot = plot_df[plot_df['Flagged']]
-fig.add_trace(go.Scatter(x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
-                          name='Flagged Day', marker=dict(color='red', size=6)))
-fig.update_layout(title="Market Anomaly Score Over Time", plot_bgcolor='white',
-                   legend=dict(orientation='h', y=1.1))
-fig.update_xaxes(title_text="Date")
-fig.update_yaxes(title_text="Anomaly Score")
-st.plotly_chart(fig, use_container_width=True)
+fig.add_trace(go.Scatter(
+    x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
+    name='Flagged Day',
+    marker=dict(color='#ff3b30', size=8, line=dict(color='#0e1117', width=1.5), symbol='circle'),
+    hovertemplate='⚠️ %{x|%b %d, %Y}<br>Score: %{y:.2f}<extra></extra>'
+))
+
+fig.update_layout(
+    title=dict(text="Market Anomaly Score Over Time", font=dict(size=18, color='#f0f0f0', family='Inter')),
+    plot_bgcolor='rgba(0,0,0,0)',
+    paper_bgcolor='rgba(0,0,0,0)',
+    font=dict(color='#c8ccd4', family='Inter'),
+    legend=dict(orientation='h', y=1.12, x=0.5, xanchor='center', bgcolor='rgba(0,0,0,0)'),
+    margin=dict(l=10, r=10, t=60, b=10),
+    hovermode='x unified'
+)
+fig.update_xaxes(title_text="Date", showgrid=False, showline=True, linecolor='rgba(255,255,255,0.1)', zeroline=False)
+fig.update_yaxes(title_text="Anomaly Score", showgrid=True, gridcolor='rgba(255,255,255,0.06)', zeroline=False)
+fig.update_traces(cliponaxis=False)
+
+st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 st.subheader("🔍 Flagged Anomaly Days")
 st.caption("Select a year (and optionally a month) to browse anomalies, then click any card to load real news from that exact date.")
