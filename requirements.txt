@@ -3,3 +3,7 @@ pandas
 numpy
 yfinance
 plotly
+requests
+# Optional but strongly recommended for full features:
+scipy
+scikit-learn
