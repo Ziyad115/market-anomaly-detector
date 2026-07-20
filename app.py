@@ -8,6 +8,28 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import urllib.parse
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Optional scientific dependencies.
+#  The app degrades gracefully if scipy / scikit-learn are not installed:
+#    - scipy      -> adds an (approximate) chi-square p-value per day
+#    - sklearn    -> adds an Isolation Forest model for side-by-side comparison
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from scipy.stats import chi2
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+
+try:
+    from sklearn.ensemble import IsolationForest
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
+
+# The five signals that make up the composite score, and their display names.
+SIGNALS = ['S&P500', 'Gold', 'Oil_WTI', 'USD_Index', 'VIX']
+DISPLAY = {'S&P500': 'S&P 500', 'Gold': 'Gold', 'Oil_WTI': 'Oil', 'USD_Index': 'USD', 'VIX': 'VIX'}
+
 st.set_page_config(page_title="Market Anomaly Detector", layout="wide", page_icon="📈")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -141,6 +163,8 @@ html, body, [class*="css"]{
 .stat{ background:rgba(255,255,255,0.028); border:1px solid var(--stroke); border-radius:9px; padding:6px 12px; }
 .stat-k{ font-size:9px; text-transform:uppercase; letter-spacing:0.6px; color:var(--txt-faint); font-weight:800; }
 .stat-v{ font-family:var(--mono); font-size:13px; color:#D5DCE6; font-weight:600; margin-top:2px; }
+.stat.driver{ background:color-mix(in srgb, var(--neon) 9%, transparent); border-color:color-mix(in srgb, var(--neon) 26%, transparent); }
+.stat.driver .stat-v{ color:var(--neon); }
 
 /* historical event note */
 .event-note{
@@ -167,6 +191,19 @@ html, body, [class*="css"]{
     backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
 }
 .context-box b{ color:#DCE3EC; }
+
+/* ── VALIDATION TABLE ───────────────────────────────────── */
+.vtable{ width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; margin-top:4px;
+    background:var(--glass); border:1px solid var(--stroke); border-radius:14px; overflow:hidden;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+.vtable th{ text-align:left; font-size:9.5px; text-transform:uppercase; letter-spacing:0.7px;
+    color:var(--txt-faint); font-weight:800; padding:11px 14px; background:rgba(255,255,255,0.02);
+    border-bottom:1px solid var(--stroke); }
+.vtable td{ padding:10px 14px; border-bottom:1px solid rgba(148,163,184,0.07); color:#CFD6E0; vertical-align:middle; }
+.vtable tr:last-child td{ border-bottom:none; }
+.vtable td.mono, .vtable th.mono{ font-family:var(--mono); }
+.vtable .vt-event{ color:#AEB7C4; }
+.hit{ color:var(--pos); font-weight:800; } .miss{ color:var(--danger); font-weight:800; }
 
 /* ── STREAMLIT WIDGET OVERRIDES ─────────────────────────── */
 [data-testid="stExpander"]{
@@ -212,9 +249,12 @@ HISTORICAL_EVENTS = {
     "2022-06-13": "S&P 500 enters bear market amid rate hike and inflation fears.",
 }
 
-# ── DATA LOGIC (unchanged) ───────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  DATA + MODEL LOGIC
+# ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_data():
+    """Download daily closes for the five monitored instruments since 2005."""
     tickers = {
         'S&P500': '^GSPC', 'VIX': '^VIX', 'Gold': 'GC=F',
         'Oil_WTI': 'CL=F', 'USD_Index': 'DX-Y.NYB'
@@ -229,24 +269,139 @@ def load_data():
     prices = pd.DataFrame(data).dropna()
     return prices
 
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def compute_anomaly(prices, window=63):
+def compute_anomaly(prices, window=63, k=2.0, burn_in=252):
+    """
+    Build a causal, explainable cross-asset anomaly score.
+
+    Pipeline
+    --------
+    1. STANDARDIZE each signal into a rolling z-score (how many std devs today's
+       move sits from its own recent `window`-day norm):
+         - price assets -> z-score of daily LOG returns (log returns are additive
+                           and better-behaved than simple pct changes)
+         - VIX          -> z-score of the LEVEL (the VIX is already a fear gauge;
+                           an elevated level relative to its recent norm IS the signal)
+
+    2. AGGREGATE the 5 z-scores into ONE composite via the root-mean-square (RMS)
+       z-score:   Anomaly_Score = sqrt( mean_i z_i^2 ).
+       Why RMS instead of the old `mean|z| + 0.5*|VIX|`?
+         * every signal is weighted equally — no arbitrary 0.5 VIX weight;
+         * the squared length  sum_i z_i^2  has a real statistical meaning: under a
+           null of independent N(0,1) daily moves it follows a chi-square(df=N) law,
+           which lets us attach an (approximate) p-value to each day;
+         * squaring makes the score react sharply to a single extreme asset, which
+           is exactly what a market shock looks like.
+
+    3. ASSET CONTRIBUTIONS — each signal's share of the squared length,
+       z_i^2 / sum_j z_j^2  (as %). These sum to 100% and directly answer
+       "why was this day flagged?".
+
+    4. CAUSAL, LEAKAGE-FREE THRESHOLD — an EXPANDING mean + k*std computed on PAST
+       scores only (`.expanding()` then `.shift(1)`), so each day is judged solely
+       by the history available strictly before it. This replaces the old
+       full-sample constant threshold, in which future data leaked into the
+       classification of past days. `burn_in` days of history are required before
+       any threshold (and therefore any flag) is produced.
+    """
     df = prices.copy()
-    assets = ['S&P500', 'Gold', 'Oil_WTI', 'USD_Index']
-    for col in assets:
-        df[f'{col}_Return'] = df[col].pct_change()
+    price_assets = ['S&P500', 'Gold', 'Oil_WTI', 'USD_Index']
+
+    # 1a. Price assets -> z-score of log returns
+    for col in price_assets:
+        df[f'{col}_Return'] = np.log(df[col] / df[col].shift(1))
         df[f'{col}_RollMean'] = df[f'{col}_Return'].rolling(window).mean()
         df[f'{col}_RollStd'] = df[f'{col}_Return'].rolling(window).std()
         df[f'{col}_Zscore'] = (df[f'{col}_Return'] - df[f'{col}_RollMean']) / df[f'{col}_RollStd']
+
+    # 1b. VIX -> z-score of the level
     df['VIX_RollMean'] = df['VIX'].rolling(window).mean()
     df['VIX_RollStd'] = df['VIX'].rolling(window).std()
     df['VIX_Zscore'] = (df['VIX'] - df['VIX_RollMean']) / df['VIX_RollStd']
-    zcols = [f'{a}_Zscore' for a in assets]
-    df['Avg_Abs_Zscore'] = df[zcols].abs().mean(axis=1)
-    df['Anomaly_Score'] = df['Avg_Abs_Zscore'] + df['VIX_Zscore'].abs()/2
-    df['Threshold'] = df['Anomaly_Score'].mean() + 2*df['Anomaly_Score'].std()
-    df['Flagged'] = df['Anomaly_Score'] > df['Threshold']
+
+    zcols = [f'{s}_Zscore' for s in SIGNALS]
+    n = len(zcols)
+
+    # 2. Composite = RMS z-score
+    sum_sq = (df[zcols] ** 2).sum(axis=1)
+    safe_sum_sq = sum_sq.replace(0, np.nan)          # guard the contribution divide
+    df['Sum_Sq_Z'] = sum_sq
+    df['Anomaly_Score'] = np.sqrt(sum_sq / n)
+
+    # 3. Per-asset contributions (% of squared length) -> each row sums to ~100
+    for s in SIGNALS:
+        df[f'{s}_Contribution'] = (df[f'{s}_Zscore'] ** 2 / safe_sum_sq) * 100
+
+    # (optional) approximate chi-square p-value: P(chi2_N > sum_sq).
+    # Approximate because the assets are correlated (effective df < N); a
+    # Mahalanobis distance would make this exact.
+    if HAS_SCIPY:
+        df['Anomaly_PValue'] = chi2.sf(df['Sum_Sq_Z'].values, df=n)
+    else:
+        df['Anomaly_PValue'] = np.nan
+
+    # 4. Causal expanding threshold (past-only, shifted 1 day => no leakage)
+    exp_mean = df['Anomaly_Score'].expanding(min_periods=burn_in).mean().shift(1)
+    exp_std = df['Anomaly_Score'].expanding(min_periods=burn_in).std().shift(1)
+    df['Threshold'] = exp_mean + k * exp_std
+    df['Flagged'] = df['Anomaly_Score'] > df['Threshold']   # NaN threshold -> False
+
     return df
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def compute_isolation_forest(prices_df, contamination):
+    """
+    Alternative, MODEL-BASED anomaly score: an Isolation Forest fit on the same
+    five standardized signals. Returns a per-day IF anomaly score (higher = more
+    anomalous) plus a binary flag.
+
+    Honesty note: the forest is fit IN-SAMPLE on the full history, so it "sees"
+    future data. That is acceptable for a side-by-side illustration, but a
+    rigorous backtest would refit the forest walk-forward. `contamination` is set
+    to the composite model's flag rate so both models raise a comparable number
+    of alerts, which keeps the recall comparison fair.
+    """
+    zcols = [f'{s}_Zscore' for s in SIGNALS]
+    feat = prices_df[zcols].dropna()
+
+    clf = IsolationForest(n_estimators=300, contamination=contamination, random_state=42)
+    clf.fit(feat.values)
+
+    out = pd.DataFrame(index=feat.index)
+    out['IF_Score'] = -clf.score_samples(feat.values)          # flip sign: higher = more anomalous
+    out['IF_Flagged'] = (clf.predict(feat.values) == -1)
+
+    out = out.reindex(prices_df.index)
+    out['IF_Flagged'] = out['IF_Flagged'].fillna(False).astype(bool)
+    return out
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def validate_events(scored_df, events, flag_col='Flagged', window_days=7):
+    """
+    Backtest against known crises. For each event date, check whether `flag_col`
+    fired within +/- `window_days` calendar days, and record the nearest flag
+    distance (within a wider +/-30d window) and the peak anomaly score in-window.
+    """
+    rows = []
+    flagged_idx = scored_df.index[scored_df[flag_col].fillna(False)]
+    for date_str, desc in sorted(events.items()):
+        d = pd.Timestamp(date_str)
+        lo, hi = d - pd.Timedelta(days=window_days), d + pd.Timedelta(days=window_days)
+        win = scored_df[(scored_df.index >= lo) & (scored_df.index <= hi)]
+        detected = bool(win[flag_col].fillna(False).any()) if len(win) else False
+
+        wide = flagged_idx[(flagged_idx >= d - pd.Timedelta(days=30)) &
+                           (flagged_idx <= d + pd.Timedelta(days=30))]
+        nearest = int(min(abs((f - d).days) for f in wide)) if len(wide) else None
+        peak = float(win['Anomaly_Score'].max()) if len(win) and win['Anomaly_Score'].notna().any() else None
+
+        rows.append({'date': date_str, 'event': desc, 'detected': detected,
+                     'nearest': nearest, 'peak': peak})
+    return rows
+
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_news_for_date(date_str, days_window=1):
@@ -263,13 +418,16 @@ def get_news_for_date(date_str, days_window=1):
     except Exception:
         return []
 
+
 with st.spinner("Loading live market data..."):
     prices = load_data()
     df = compute_anomaly(prices)
 
 latest = df.iloc[-1]
 
-# ── KPI CARDS ────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  KPI CARDS
+# ─────────────────────────────────────────────────────────────────────────────
 ICO = {
     "activity": '<path d="M22 12h-4l-3 8L9 4l-3 8H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
     "target":   '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
@@ -303,13 +461,15 @@ status_sub = "Market stress detected" if flagged_now else "Within normal range"
 
 cards = "".join([
     kpi("activity", "Latest Anomaly Score", f"{score:.2f}", gap_sub, "var(--neon)"),
-    kpi("target",   "Threshold",            f"{thresh:.2f}", "mean + 2σ baseline", "var(--neon-2)"),
+    kpi("target",   "Threshold",            f"{thresh:.2f}", "expanding · mean + 2σ (causal)", "var(--neon-2)"),
     kpi("shield",   "Current Status",        status_txt, status_sub, status_acc),
     kpi("clock",    "Last Updated",          datetime.now().strftime("%d %b · %H:%M"), "Auto-refresh · 60 min", "#94A3B8"),
 ])
 st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)
 
-# ── CHART ────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  CHART
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-label"><span class="sq"></span> Anomaly Score Timeline</div>', unsafe_allow_html=True)
 
 view = st.selectbox("Select time range", ["Last 6 Months", "Last 2 Years", "Full History (2005-Present)"])
@@ -320,12 +480,9 @@ elif view == "Last 2 Years":
 else:
     plot_df = df.resample("W").last()
 
-y_top = max(plot_df['Anomaly_Score'].max(), thresh) * 1.10
+y_top = np.nanmax([plot_df['Anomaly_Score'].max(), plot_df['Threshold'].max()]) * 1.10
 
 fig = go.Figure()
-
-# danger zone above the threshold
-fig.add_hrect(y0=thresh, y1=y_top, line_width=0, fillcolor="rgba(251,75,87,0.055)", layer="below")
 
 # soft neon glow underlay for the score line
 fig.add_trace(go.Scatter(
@@ -341,14 +498,15 @@ fig.add_trace(go.Scatter(
     fill='tozeroy', fillcolor='rgba(34,211,238,0.10)',
     hovertemplate='Score  <b>%{y:.2f}</b><extra></extra>'
 ))
+# dynamic (expanding) threshold — now a line, since it varies over time
+fig.add_trace(go.Scatter(
+    x=plot_df.index, y=plot_df['Threshold'], mode='lines',
+    name='Threshold (expanding)',
+    line=dict(color='rgba(226,232,240,0.40)', width=1.4, dash='dot'),
+    hovertemplate='Threshold  %{y:.2f}<extra></extra>'
+))
 
-fig.add_hline(
-    y=thresh, line_dash='dot', line_color='rgba(226,232,240,0.35)', line_width=1.4,
-    annotation_text='THRESHOLD', annotation_font_color='#94A3B8',
-    annotation_font_size=10, annotation_position='top left'
-)
-
-flagged_plot = plot_df[plot_df['Flagged']]
+flagged_plot = plot_df[plot_df['Flagged'] == True]
 # glow halo under flagged markers
 fig.add_trace(go.Scatter(
     x=flagged_plot.index, y=flagged_plot['Anomaly_Score'], mode='markers',
@@ -388,11 +546,13 @@ fig.update_traces(cliponaxis=False)
 
 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-# ── FLAGGED ANOMALY DAYS ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLAGGED ANOMALY DAYS
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-label"><span class="sq"></span> Flagged Anomaly Days</div>', unsafe_allow_html=True)
-st.caption("Select a year (and optionally a month) to browse anomalies, then expand any card to load real news from that exact date.")
+st.caption("Select a year (and optionally a month) to browse anomalies, then expand any card to load real news from that exact date. Each card names the asset that drove the day's score.")
 
-all_flags = df[df['Flagged']].sort_index(ascending=False)
+all_flags = df[df['Flagged'] == True].sort_index(ascending=False)
 
 available_years = sorted(all_flags.index.year.unique(), reverse=True)
 year_options = ["All Years"] + [str(y) for y in available_years]
@@ -429,6 +589,18 @@ for date_idx, row in recent_flags.iterrows():
     sev_label = "Severe" if is_severe else "Moderate"
     sev_color = "var(--danger)" if is_severe else "var(--warn)"
 
+    # top contributing asset for this day (explainability)
+    contribs = {s: row.get(f'{s}_Contribution', np.nan) for s in SIGNALS}
+    top_asset = max(contribs, key=lambda s: contribs[s] if pd.notna(contribs[s]) else -1)
+    top_pct = contribs[top_asset]
+    driver_txt = f"{DISPLAY[top_asset]} {top_pct:.0f}%" if pd.notna(top_pct) else "—"
+
+    # optional rarity (chi-square p-value)
+    pval = row.get('Anomaly_PValue', np.nan)
+    rarity_chip = ""
+    if pd.notna(pval):
+        rarity_chip = f'<div class="stat"><div class="stat-k">Rarity (p)</div><div class="stat-v">{pval*100:.2f}%</div></div>'
+
     st.markdown(f"""
     <div class="alert" style="--sev:{sev_color}">
         <div class="alert-rail"></div>
@@ -441,9 +613,11 @@ for date_idx, row in recent_flags.iterrows():
                 <span class="alert-score">{row['Anomaly_Score']:.2f}</span>
             </div>
             <div class="alert-stats">
-                <div class="stat"><div class="stat-k">S&amp;P 500</div><div class="stat-v">{row['S&P500']:,.1f}</div></div>
+                <div class="stat driver"><div class="stat-k">Top Driver</div><div class="stat-v">{driver_txt}</div></div>
+                <div class="stat"><div class="stat-k">S&amp;P 500</div><div class="stat-v">{row['S&P500']:,.0f}</div></div>
                 <div class="stat"><div class="stat-k">VIX</div><div class="stat-v">{row['VIX']:.1f}</div></div>
                 <div class="stat"><div class="stat-k">Threshold</div><div class="stat-v">{row['Threshold']:.2f}</div></div>
+                {rarity_chip}
                 <div class="stat"><div class="stat-k">When</div><div class="stat-v">{days_ago}d ago</div></div>
             </div>
         </div>
@@ -469,18 +643,114 @@ for date_idx, row in recent_flags.iterrows():
 
     st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
 
-# ── RAW DATA EXPLORER ────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  MODEL VALIDATION & BACKTEST
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-label"><span class="sq"></span> Model Validation &amp; Backtest</div>', unsafe_allow_html=True)
+st.caption("Does the score actually light up during real crises? Each known event is checked for a flag within ±7 days of the event date.")
+
+# ---- composite model results ----
+val = validate_events(df, HISTORICAL_EVENTS, 'Flagged')
+detected = sum(r['detected'] for r in val)
+total_ev = len(val)
+recall = (detected / total_ev * 100) if total_ev else 0.0
+n_scored = int(df['Threshold'].notna().sum())
+total_flags = int(df['Flagged'].sum())
+flag_rate = (total_flags / n_scored * 100) if n_scored else 0.0
+
+# ---- optional Isolation Forest comparison ----
+val_if = None
+if HAS_SKLEARN:
+    contamination = float(min(max(flag_rate / 100.0, 0.005), 0.20))  # match the alert budget
+    if_df = compute_isolation_forest(df, contamination)
+    df_if = df.join(if_df)
+    val_if = validate_events(df_if, HISTORICAL_EVENTS, 'IF_Flagged')
+    if_detected = sum(r['detected'] for r in val_if)
+    if_recall = (if_detected / total_ev * 100) if total_ev else 0.0
+else:
+    df_if = df
+
+recall_acc = "var(--pos)" if recall >= 70 else "var(--warn)"
+vcards = "".join([
+    kpi("shield",   "Crisis Recall",   f"{recall:.0f}%",       f"{detected} of {total_ev} events", recall_acc),
+    kpi("activity", "Events Detected", f"{detected}/{total_ev}", "within ±7 days", "var(--neon)"),
+    kpi("target",   "Flagged Days",    f"{total_flags:,}",     "across all history", "var(--neon-2)"),
+    kpi("clock",    "Daily Flag Rate", f"{flag_rate:.1f}%",    "of scored trading days", "#94A3B8"),
+])
+st.markdown(f'<div class="kpi-grid">{vcards}</div>', unsafe_allow_html=True)
+
+# ---- per-event backtest table ----
+if_lookup = {r['date']: r['detected'] for r in val_if} if val_if is not None else None
+if_header = '<th class="mono">Isol. Forest</th>' if if_lookup is not None else ''
+
+body_rows = ""
+for r in val:
+    hit = '<span class="hit">✓ Detected</span>' if r['detected'] else '<span class="miss">✗ Missed</span>'
+    nearest = f"{r['nearest']}d" if r['nearest'] is not None else "—"
+    peak = f"{r['peak']:.2f}" if r['peak'] is not None else "—"
+    event_short = (r['event'][:58] + "…") if len(r['event']) > 58 else r['event']
+    if_cell = ''
+    if if_lookup is not None:
+        ok = if_lookup.get(r['date'], False)
+        if_mark = '<span class="hit">✓</span>' if ok else '<span class="miss">✗</span>'
+        if_cell = f'<td>{if_mark}</td>'
+    body_rows += f"""<tr>
+        <td class="mono">{r['date']}</td>
+        <td class="vt-event">{event_short}</td>
+        <td>{hit}</td>
+        <td class="mono">{nearest}</td>
+        <td class="mono">{peak}</td>
+        {if_cell}
+    </tr>"""
+
+st.markdown(f"""
+<table class="vtable">
+    <thead><tr>
+        <th class="mono">Date</th>
+        <th>Historical Event</th>
+        <th>Composite Model</th>
+        <th class="mono">Nearest Flag</th>
+        <th class="mono">Peak Score</th>
+        {if_header}
+    </tr></thead>
+    <tbody>{body_rows}</tbody>
+</table>
+""", unsafe_allow_html=True)
+
+# ---- honest interpretation ----
+compare_line = ""
+if val_if is not None:
+    compare_line = (f"<br><br><b>Isolation Forest comparison.</b> Fit on the same five z-scores with "
+                    f"contamination matched to the composite's alert budget, the forest detected "
+                    f"<b>{if_detected}/{total_ev}</b> events ({if_recall:.0f}% recall) vs the composite's "
+                    f"{recall:.0f}%. The forest is trained in-sample on the full history, so treat this as "
+                    f"an illustrative comparison, not a walk-forward backtest.")
+
+st.markdown(f"""
+<div class="context-box">
+<b>How to read this.</b> <b>Crisis Recall</b> is the share of known events the model flagged within a ±7-day
+window — a proxy for sensitivity. <b>Daily Flag Rate</b> is how often it fires overall; a low rate means the
+recall wasn't bought by flagging everything. Because the threshold is <b>expanding and causal</b>, the earliest
+events are judged against a shorter, calmer history (so they flag readily), while later events face a bar raised
+by 2008 and 2020 — an honest reflection of what was knowable at the time, not hindsight.{compare_line}
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  RAW DATA EXPLORER
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-label"><span class="sq"></span> Raw Data Explorer</div>', unsafe_allow_html=True)
 st.markdown("""
 <div class="context-box">
 <b>What am I looking at?</b><br>
-This table shows the last 100 trading days of raw and calculated data feeding the model above.
-Each asset (S&P 500, Gold, Oil, USD Index, VIX) has its <b>daily return</b>, <b>63-day rolling mean/std</b>,
-and resulting <b>z-score</b> — the number of standard deviations that day's move was from its recent norm.
-The final <b>Anomaly_Score</b> combines all z-scores into one composite reading, and <b>Flagged</b> marks
-days where that score crossed the statistical threshold (mean + 2 standard deviations).
+The last 100 trading days of raw and calculated data feeding the model. Each signal (S&P 500, Gold, Oil,
+USD Index, VIX) has its <b>daily return</b>, <b>63-day rolling mean/std</b>, and <b>z-score</b>. The
+<b>Anomaly_Score</b> is the root-mean-square of those z-scores; the <b>*_Contribution</b> columns show each
+signal's share of that score (they sum to 100%); <b>Threshold</b> is the causal expanding mean + 2σ; and
+<b>Flagged</b> marks days whose score crossed it. Where available, <b>Anomaly_PValue</b> gives an approximate
+chi-square rarity for the day.
 </div>
 """, unsafe_allow_html=True)
-st.dataframe(df.tail(100), use_container_width=True)
+st.dataframe(df_if.tail(100), use_container_width=True)
 
-st.caption("Data source: Yahoo Finance + Google News  ·  Model: Rolling 63-day z-score composite anomaly detection")
+st.caption("Data source: Yahoo Finance + Google News  ·  Model: RMS cross-asset z-score with causal expanding threshold  ·  Comparison: Isolation Forest")
